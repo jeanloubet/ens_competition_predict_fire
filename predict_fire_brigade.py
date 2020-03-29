@@ -15,8 +15,13 @@ from xgboost import XGBRegressor
 import xgboost as xgb
 from sklearn.model_selection import GridSearchCV 
 from sklearn.externals import joblib
-
-
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import confusion_matrix
+from sklearn.externals import joblib
 
 
 def load_file():
@@ -41,16 +46,14 @@ def traitement_x(df):
 
 def traitement_y(df):
 
-    reference_for_code=pd.factorize(df["emergency vehicle selection"])
-    df["emergency vehicle selection"]=pd.factorize(df["emergency vehicle selection"])[0]
     df["delta selection-departure"]=df["delta selection-departure"].astype(float)
     df["delta departure-presentation"]=df["delta departure-presentation"].astype(float)
     df["delta selection-presentation"]=df["delta selection-presentation"].astype(float)   
-    return df,reference_for_code
+    return df
     
 def create_model_regression(x_train,y_train,model_name:str,objective_model:str,extra=""):
     #selection des meilleurs parametres du model
-    """
+
     parameters = {
     'objective':['reg:linear'],
      'max_depth':[10,12,14],
@@ -67,17 +70,9 @@ def create_model_regression(x_train,y_train,model_name:str,objective_model:str,e
     
     
     param_final =xgb_grid.best_params_
-    """
+
     data_dmatrix = xgb.DMatrix(data= x_train, label= y_train)
-    params = {
-    'objective':objective_model,
-     'max_depth':12,
-     'min_child_weight':2,
-     'learning_rate':0.1,
-     'n_estimators':300,  
-    }
-    
-    params.update(extra)
+    params = xgb_grid.best_params_
     
     xg_reg2 = xgb.train(params=params,dtrain=data_dmatrix, num_boost_round=200) #params=param_final,
     ##sauvegarde du model
@@ -93,11 +88,10 @@ if __name__ == '__main__':
     #traitement
     x_train_treated=traitement_x(x_train)
     x_test_treated=traitement_x(x_test)
-    y_train_treated,reference=traitement_y(y_train)
-    
-    nb_classes=len(Counter(reference[0]))-1
-    
-    model0= create_model_regression(x_train_treated,y_train_treated["emergency vehicle selection"],'emergency vehicle selection','multi:softmax',extra = {'num_class': nb_classes})
+    y_train_treated=traitement_y(y_train)
+
+    x_test_matrix=xgb.DMatrix(data=x_test_treated)
+
     model1= create_model_regression(x_train_treated,y_train_treated["delta selection-departure"],"delta selection-departure",'reg:linear')
     model2= create_model_regression(x_train_treated,y_train_treated["delta departure-presentation"],"delta departure-presentation",'reg:linear')
     model3= create_model_regression(x_train_treated,y_train_treated["delta selection-presentation"],"delta selection-presentation",'reg:linear')
@@ -105,9 +99,9 @@ if __name__ == '__main__':
     
     ## Submission 
     submission = pd.concat([pd.DataFrame(x_test[['emergency vehicle selection']].values), \
-               pd.DataFrame(np.full((len(x_test), 1), y_train['delta selection-departure'].median())), \
-               pd.DataFrame(model.predict(x_test_transit_poly)), \
-               pd.DataFrame(y_selection_presentation_predicted)], \
+               pd.DataFrame(model1.predict(x_test_matrix)), \
+               pd.DataFrame(model2.predict(x_test_matrix)), \
+               pd.DataFrame(model3.predict(x_test_matrix))], \
                axis=1)
     
     submission.columns = list(y_train.columns.values)
